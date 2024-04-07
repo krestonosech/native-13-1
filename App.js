@@ -1,68 +1,88 @@
-import React, { useEffect, useState } from 'react';
-import { View, FlatList, Image, StyleSheet  } from 'react-native';
-import * as FileSystem from 'expo-file-system';
+import * as React from 'react';
+import { Text, View, StyleSheet, Image, Button, Platform } from 'react-native';
 
-const GifGallery = () => {
-  const [gifFiles, setGifFiles] = useState([]);
+import { addMultipleGifs, deleteAllGifs, getSingleGif } from './GifManagement';
 
-  useEffect(() => {
-    const directoryUri = FileSystem.documentDirectory + 'gifs/';
-    const assetsUri = FileSystem.assetDirectory + 'gifs/';
+// those are Giphy.com ID's - they are hardcoded here,
+// but if you have Giphy API key - you can use findGifs() from gifFetching.ts
+const gifIds = ['YsTs5ltWtEhnq', 'cZ7rmKfFYOvYI', '11BCDu2iUc8Nvhryl7'];
 
-    FileSystem.makeDirectoryAsync(directoryUri, { intermediates: true }).then(() => {
-      FileSystem.readDirectoryAsync(assetsUri)
-        .then((files) => {
-          const gifFiles = files.filter((file) => file.endsWith('.gif'));
-          const promises = gifFiles.map((file) =>
-            FileSystem.copyAsync({
-              from: `${assetsUri}${file}`,
-              to: `${directoryUri}${file}`,
-            })
-          );
-          return Promise.all(promises);
-        })
-        .then(() => {
-          FileSystem.readDirectoryAsync(directoryUri)
-            .then((files) => {
-              setGifFiles(files.filter((file) => file.endsWith('.gif')));
-            })
-            .catch((error) => console.error(error));
-        })
-        .catch((error) => console.error(error));
-    });
+function AppMain() {
+  //download all gifs at startup
+  React.useEffect(() => {
+    (async () => {
+      await addMultipleGifs(gifIds);
+    })();
+
+    //and unload at the end
+    return () => {
+      deleteAllGifs();
+    };
   }, []);
 
-  const renderGif = ({ item }) => {
-    return (
-      <View style={styles.gifContainer}>
-        <Image source={{ uri: `file://${FileSystem.documentDirectory}gifs/${item}` }} style={styles.gif} />
-      </View>
-    );
+  //file uri of selected gif
+  const [selectedUri, setUri] = React.useState(null);
+
+  const handleSelect = async id => {
+    try {
+      setUri(await getSingleGif(id));
+    } catch (e) {
+      console.error("Couldn't load gif", e);
+    }
+  };
+
+  const unloadAll = () => {
+    setUri(null);
+    deleteAllGifs();
   };
 
   return (
-    <FlatList
-      data={gifFiles}
-      renderItem={renderGif}
-      keyExtractor={(item) => item}
-      contentContainerStyle={styles.gallery}
-    />
+    <View style={styles.container}>
+      <Text style={styles.header}>See contents of gifManagement.ts</Text>
+      <Text style={styles.paragraph}>Select one of the IDs</Text>
+
+      {gifIds.map((item, index) => (
+        <Button title={`Gif ${index + 1}`} key={item} onPress={() => handleSelect(item)} />
+      ))}
+
+      <Button title="Unload all" onPress={unloadAll} />
+
+      <Text style={styles.paragraph}>Selected URI: {selectedUri || 'none'}</Text>
+      {selectedUri != null && <Image style={{ height: 200 }} source={{ uri: selectedUri }} />}
+    </View>
   );
-};
+}
 
 const styles = StyleSheet.create({
-  gifContainer: {
-    width: '100%',
-    height: 200,
-    marginBottom: 10,
+  container: {
+    flex: 1,
+    paddingTop: 20,
+    justifyContent: 'center',
+    backgroundColor: '#ecf0f1',
+    padding: 8,
   },
-  gif: {
-    width: '100%',
-    height: '100%',
+  header: {
+    margin: 24,
+    fontSize: 18,
+    fontWeight: 'bold',
+    textAlign: 'center',
   },
-  gallery: {
-    paddingHorizontal: 10,
+  paragraph: {
+    textAlign: 'center',
+    marginBottom: 15,
   },
 });
 
-export default GifGallery;
+function UnsupportedPlatform() {
+  return (
+    <View style={styles.container}>
+      <Text style={styles.header}>
+        FileSystem doesn&#39;t support web. Run this on Android or iOS
+      </Text>
+    </View>
+  );
+}
+
+export default function App() {
+  return Platform.OS === 'android' || Platform.OS === 'ios' ? <AppMain /> : <UnsupportedPlatform />;
+}
